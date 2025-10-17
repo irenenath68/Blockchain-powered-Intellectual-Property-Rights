@@ -10,10 +10,7 @@ path = 'contracts/Blockchain-powered-Intellectual-Property-Rights.clar'
 clarity_version = 3
 epoch = 3.1
 
-[contracts.ipr]
-path = 'contracts/ipr.clar'
-clarity_version = 3
-epoch = 3.1
+
 [repl.analysis]
 passes = ['check_checker']
 

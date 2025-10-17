@@ -4,8 +4,11 @@
 (define-constant ERR-INVALID-PARAMS (err u400))
 (define-constant ERR-EXPIRED (err u410))
 (define-constant ERR-INSUFFICIENT-PAYMENT (err u402))
+(define-constant ERR-NO-ROYALTY-BALANCE (err u403))
 (define-constant CONTRACT-OWNER tx-sender)
 (define-constant MIN-REGISTRATION-FEE u1000000)
+(define-constant MAX-ROYALTY-PERCENTAGE u2000)
+(define-constant DEFAULT-ROYALTY-PERCENTAGE u1000)
 
 (define-data-var next-ip-id uint u1)
 (define-data-var platform-fee-rate uint u500)
@@ -14,6 +17,7 @@
     { id: uint }
     {
         owner: principal,
+        original-creator: principal,
         title: (string-ascii 128),
         description: (string-ascii 512),
         ip-type: (string-ascii 32),
@@ -23,6 +27,7 @@
         is-active: bool,
         licensing-enabled: bool,
         base-license-fee: uint,
+        royalty-percentage: uint,
     }
 )
 
@@ -72,6 +77,19 @@
     { count: uint }
 )
 
+(define-map royalty-balances
+    { creator: principal }
+    { balance: uint }
+)
+
+(define-map total-royalties-by-ip
+    { ip-id: uint }
+    {
+        total-collected: uint,
+        withdrawal-count: uint,
+    }
+)
+
 (define-public (register-ip
         (title (string-ascii 128))
         (description (string-ascii 512))
@@ -98,6 +116,7 @@
 
         (map-set intellectual-property { id: current-id } {
             owner: tx-sender,
+            original-creator: tx-sender,
             title: title,
             description: description,
             ip-type: ip-type,
@@ -107,6 +126,7 @@
             is-active: true,
             licensing-enabled: enable-licensing,
             base-license-fee: license-fee,
+            royalty-percentage: DEFAULT-ROYALTY-PERCENTAGE,
         })
 
         (map-set user-ip-count { user: tx-sender } { count: (+ (get-user-ip-count tx-sender) u1) })
@@ -124,15 +144,28 @@
     (let (
             (ip-data (unwrap! (map-get? intellectual-property { id: ip-id }) ERR-NOT-FOUND))
             (current-height burn-block-height)
+            (original-creator (get original-creator ip-data))
+            (royalty-percentage (get royalty-percentage ip-data))
+            (is-secondary-sale (not (is-eq tx-sender original-creator)))
         )
         (asserts! (is-eq tx-sender (get owner ip-data)) ERR-NOT-AUTHORIZED)
         (asserts! (get is-active ip-data) ERR-EXPIRED)
         (asserts! (< current-height (get expiry-date ip-data)) ERR-EXPIRED)
         (asserts! (not (is-eq tx-sender new-owner)) ERR-INVALID-PARAMS)
 
-        (if (> price u0)
-            (try! (stx-transfer? price new-owner tx-sender))
-            true
+        (if (and (> price u0) is-secondary-sale)
+            (let (
+                    (royalty-amount (/ (* price royalty-percentage) u10000))
+                    (seller-amount (- price royalty-amount))
+                )
+                (try! (stx-transfer? seller-amount new-owner tx-sender))
+                (try! (stx-transfer? royalty-amount new-owner (as-contract tx-sender)))
+                (update-royalty-balance original-creator royalty-amount ip-id)
+            )
+            (if (> price u0)
+                (try! (stx-transfer? price new-owner tx-sender))
+                true
+            )
         )
 
         (map-set intellectual-property { id: ip-id }
@@ -276,6 +309,42 @@
     )
 )
 
+(define-public (set-royalty-percentage
+        (ip-id uint)
+        (percentage uint)
+    )
+    (let ((ip-data (unwrap! (map-get? intellectual-property { id: ip-id }) ERR-NOT-FOUND)))
+        (asserts! (is-eq tx-sender (get original-creator ip-data))
+            ERR-NOT-AUTHORIZED
+        )
+        (asserts! (<= percentage MAX-ROYALTY-PERCENTAGE) ERR-INVALID-PARAMS)
+
+        (map-set intellectual-property { id: ip-id }
+            (merge ip-data { royalty-percentage: percentage })
+        )
+
+        (ok true)
+    )
+)
+
+(define-public (withdraw-royalties)
+    (let (
+            (creator tx-sender)
+            (royalty-data (unwrap! (map-get? royalty-balances { creator: creator })
+                ERR-NO-ROYALTY-BALANCE
+            ))
+            (balance (get balance royalty-data))
+        )
+        (asserts! (> balance u0) ERR-NO-ROYALTY-BALANCE)
+
+        (map-set royalty-balances { creator: creator } { balance: u0 })
+
+        (try! (as-contract (stx-transfer? balance tx-sender creator)))
+
+        (ok balance)
+    )
+)
+
 (define-read-only (get-ip-details (ip-id uint))
     (map-get? intellectual-property { id: ip-id })
 )
@@ -327,8 +396,47 @@
     (var-get platform-fee-rate)
 )
 
+(define-read-only (get-royalty-balance (creator principal))
+    (get balance
+        (default-to { balance: u0 }
+            (map-get? royalty-balances { creator: creator })
+        ))
+)
+
+(define-read-only (get-ip-royalty-stats (ip-id uint))
+    (default-to {
+        total-collected: u0,
+        withdrawal-count: u0,
+    }
+        (map-get? total-royalties-by-ip { ip-id: ip-id })
+    )
+)
+
 (define-private (get-transfer-count (ip-id uint))
     (get count
         (default-to { count: u0 } (map-get? transfer-counters { ip-id: ip-id }))
+    )
+)
+
+(define-private (update-royalty-balance
+        (creator principal)
+        (amount uint)
+        (ip-id uint)
+    )
+    (let (
+            (current-balance (get-royalty-balance creator))
+            (new-balance (+ current-balance amount))
+            (royalty-stats (default-to {
+                total-collected: u0,
+                withdrawal-count: u0,
+            }
+                (map-get? total-royalties-by-ip { ip-id: ip-id })
+            ))
+        )
+        (map-set royalty-balances { creator: creator } { balance: new-balance })
+        (map-set total-royalties-by-ip { ip-id: ip-id } {
+            total-collected: (+ (get total-collected royalty-stats) amount),
+            withdrawal-count: (get withdrawal-count royalty-stats),
+        })
     )
 )
