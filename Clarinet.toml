@@ -1,25 +1,8 @@
 [project]
-name = 'Blockchain-powered-Intellectual-Property-Rights'
-description = ''
+name = "blockchain-powered-intellectual-property-rights"
+description = "Clarity smart contract for IP rights proof-of-existence registry"
 authors = []
-telemetry = true
-cache_dir = '.\.cache'
-requirements = []
-[contracts.Blockchain-powered-Intellectual-Property-Rights]
-path = 'contracts/Blockchain-powered-Intellectual-Property-Rights.clar'
-clarity_version = 3
-epoch = 3.1
 
-
-[repl.analysis]
-passes = ['check_checker']
-
-[repl.analysis.check_checker]
-strict = false
-trusted_sender = false
-trusted_caller = false
-callee_filter = false
-
-[repl.remote_data]
-enabled = false
-api_url = 'https://api.hiro.so'
+[contracts.ip-rights]
+path = "contracts/ip-rights.clar"
+depends_on = []
