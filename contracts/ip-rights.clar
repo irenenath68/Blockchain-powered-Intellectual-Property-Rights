@@ -17,7 +17,7 @@
       (begin
         (map-set ip-records
           {content-hash: content-hash}
-          {owner: tx-sender, registered-at: (block-height), title: title}
+          {owner: tx-sender, registered-at: block-height, title: title}
         )
         (ok true)
       )

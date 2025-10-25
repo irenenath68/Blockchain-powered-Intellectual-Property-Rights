@@ -1,4 +1,4 @@
-const fs = require('fs');
+import fs from 'fs';
 if (!fs.existsSync('contracts/ip-rights.clar')) {
   console.error('Contract file missing');
   process.exit(1);
