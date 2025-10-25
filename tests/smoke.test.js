@@ -1,6 +1,14 @@
 import fs from 'fs';
-if (!fs.existsSync('contracts/ip-rights.clar')) {
-  console.error('Contract file missing');
-  process.exit(1);
+const required = [
+  'contracts/charity-donation-tracker.clar',
+  'deployments/default.simnet-plan.yaml',
+  'settings/Simnet.toml',
+  '.github/workflows/ci.yml'
+];
+for (const p of required) {
+  if (!fs.existsSync(p)) {
+    console.error('Missing required file:', p);
+    process.exit(1);
+  }
 }
-console.log('npm test passed: contract file exists');
+console.log('npm test passed: required files present');
