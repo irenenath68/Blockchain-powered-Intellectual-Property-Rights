@@ -15,15 +15,3 @@ jobs:
         uses: docker://hirosystems/clarinet:latest
         with:
           args: check --plan deployments/default.simnet-plan.yaml
-on: [push]
-jobs:
-  tests:
-    name: "PROJECT_NAME"
-    runs-on: ubuntu-latest
-    steps:
-      - name: "Checkout code"
-        uses: actions/checkout@v3
-      - name: "Check contract syntax"
-        uses: docker://hirosystems/clarinet:latest
-        with:
-          args: check
