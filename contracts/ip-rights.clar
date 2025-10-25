@@ -4,8 +4,9 @@
 (define-constant ERR-NOT-FOUND u102)
 
 (define-map ip-records
-  ((content-hash (buff 32)))
-  ((owner principal) (registered-at uint) (title (string-utf8 64))))
+  { content-hash: (buff 32) }
+  { owner: principal, registered-at: uint, title: (string-utf8 64) }
+)
 
 (define-read-only (get-record (content-hash (buff 32)))
   (map-get? ip-records {content-hash: content-hash})
