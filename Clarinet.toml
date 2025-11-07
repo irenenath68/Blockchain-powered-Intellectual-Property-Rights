@@ -1,0 +1,8 @@
+[project]
+name = "blockchain-powered-intellectual-property-rights"
+description = "Clarity smart contract for IP rights proof-of-existence registry"
+authors = []
+
+[contracts.ip-rights]
+path = "contracts/Blockchain-powered-Intellectual-Property-Rights.clar"
+depends_on = []
