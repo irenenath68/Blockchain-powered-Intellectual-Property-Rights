@@ -1,15 +1,8 @@
 [project]
-name = "charity-donation-tracker"
-description = "Clarity smart contract for tracking donations"
-authors = []
-
-[contracts.charity-donation-tracker]
-path = "contracts/charity-donation-tracker.clar"
-depends_on = []
 name = "blockchain-powered-intellectual-property-rights"
 description = "Clarity smart contract for IP rights proof-of-existence registry"
 authors = []
 
 [contracts.ip-rights]
-path = "contracts/ip-rights.clar"
+path = "contracts/Blockchain-powered-Intellectual-Property-Rights.clar"
 depends_on = []

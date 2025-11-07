@@ -5,8 +5,12 @@
 (define-constant ERR-EXPIRED (err u410))
 (define-constant ERR-INSUFFICIENT-PAYMENT (err u402))
 (define-constant ERR-NO-ROYALTY-BALANCE (err u403))
+(define-constant ERR-DISPUTE-EXISTS (err u405))
+(define-constant ERR-DISPUTE-NOT-FOUND (err u406))
+(define-constant ERR-INVALID-STATUS (err u407))
 (define-constant CONTRACT-OWNER tx-sender)
 (define-constant MIN-REGISTRATION-FEE u1000000)
+(define-constant DISPUTE-FEE u500000)
 (define-constant MAX-ROYALTY-PERCENTAGE u2000)
 (define-constant DEFAULT-ROYALTY-PERCENTAGE u1000)
 
@@ -88,6 +92,36 @@
         total-collected: uint,
         withdrawal-count: uint,
     }
+)
+
+(define-map disputes
+    { ip-id: uint }
+    {
+        challenger: principal,
+        reason: (string-ascii 256),
+        filed-at: uint,
+        status: (string-ascii 16),
+        evidence-count: uint,
+        resolution-notes: (optional (string-ascii 256)),
+    }
+)
+
+(define-map dispute-evidence
+    {
+        ip-id: uint,
+        evidence-id: uint,
+    }
+    {
+        submitter: principal,
+        evidence-hash: (string-ascii 64),
+        description: (string-ascii 256),
+        timestamp: uint,
+    }
+)
+
+(define-map dispute-stats
+    { ip-id: uint }
+    { total-disputes: uint }
 )
 
 (define-public (register-ip
@@ -345,6 +379,119 @@
     )
 )
 
+(define-public (file-dispute
+        (ip-id uint)
+        (reason (string-ascii 256))
+    )
+    (let (
+            (ip-data (unwrap! (map-get? intellectual-property { id: ip-id }) ERR-NOT-FOUND))
+            (current-height burn-block-height)
+        )
+        (asserts! (is-none (map-get? disputes { ip-id: ip-id }))
+            ERR-DISPUTE-EXISTS
+        )
+        (asserts! (not (is-eq tx-sender (get owner ip-data)))
+            ERR-NOT-AUTHORIZED
+        )
+        (asserts! (> (len reason) u0) ERR-INVALID-PARAMS)
+        (asserts! (>= (stx-get-balance tx-sender) DISPUTE-FEE)
+            ERR-INSUFFICIENT-PAYMENT
+        )
+
+        (try! (stx-transfer? DISPUTE-FEE tx-sender CONTRACT-OWNER))
+
+        (map-set disputes { ip-id: ip-id } {
+            challenger: tx-sender,
+            reason: reason,
+            filed-at: current-height,
+            status: "pending",
+            evidence-count: u0,
+            resolution-notes: none,
+        })
+
+        (let ((stats (default-to { total-disputes: u0 }
+                (map-get? dispute-stats { ip-id: ip-id }))))
+            (map-set dispute-stats { ip-id: ip-id } {
+                total-disputes: (+ (get total-disputes stats) u1),
+            })
+        )
+
+        (ok true)
+    )
+)
+
+(define-public (submit-evidence
+        (ip-id uint)
+        (evidence-hash (string-ascii 64))
+        (description (string-ascii 256))
+    )
+    (let (
+            (dispute-data (unwrap! (map-get? disputes { ip-id: ip-id })
+                ERR-DISPUTE-NOT-FOUND
+            ))
+            (current-height burn-block-height)
+            (evidence-id (get evidence-count dispute-data))
+        )
+        (asserts! (is-eq (get status dispute-data) "pending")
+            ERR-INVALID-STATUS
+        )
+        (asserts! (> (len evidence-hash) u0) ERR-INVALID-PARAMS)
+        (asserts! (> (len description) u0) ERR-INVALID-PARAMS)
+
+        (map-set dispute-evidence {
+            ip-id: ip-id,
+            evidence-id: evidence-id,
+        } {
+            submitter: tx-sender,
+            evidence-hash: evidence-hash,
+            description: description,
+            timestamp: current-height,
+        })
+
+        (map-set disputes { ip-id: ip-id }
+            (merge dispute-data { evidence-count: (+ evidence-id u1) })
+        )
+
+        (ok true)
+    )
+)
+
+(define-public (resolve-dispute
+        (ip-id uint)
+        (approved bool)
+        (resolution-notes (string-ascii 256))
+    )
+    (let (
+            (dispute-data (unwrap! (map-get? disputes { ip-id: ip-id })
+                ERR-DISPUTE-NOT-FOUND
+            ))
+            (ip-data (unwrap! (map-get? intellectual-property { id: ip-id })
+                ERR-NOT-FOUND
+            ))
+        )
+        (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+        (asserts! (is-eq (get status dispute-data) "pending")
+            ERR-INVALID-STATUS
+        )
+
+        (map-set disputes { ip-id: ip-id }
+            (merge dispute-data {
+                status: (if approved "upheld" "dismissed"),
+                resolution-notes: (some resolution-notes),
+            })
+        )
+
+        (if approved
+            (map-set intellectual-property { id: ip-id }
+                (merge ip-data { is-active: false })
+            )
+            true
+        )
+
+        (ok true)
+    )
+)
+
 (define-read-only (get-ip-details (ip-id uint))
     (map-get? intellectual-property { id: ip-id })
 )
@@ -409,6 +556,33 @@
         withdrawal-count: u0,
     }
         (map-get? total-royalties-by-ip { ip-id: ip-id })
+    )
+)
+
+(define-read-only (get-dispute-details (ip-id uint))
+    (map-get? disputes { ip-id: ip-id })
+)
+
+(define-read-only (get-dispute-evidence
+        (ip-id uint)
+        (evidence-id uint)
+    )
+    (map-get? dispute-evidence {
+        ip-id: ip-id,
+        evidence-id: evidence-id,
+    })
+)
+
+(define-read-only (get-dispute-stats (ip-id uint))
+    (default-to { total-disputes: u0 }
+        (map-get? dispute-stats { ip-id: ip-id })
+    )
+)
+
+(define-read-only (has-active-dispute (ip-id uint))
+    (match (map-get? disputes { ip-id: ip-id })
+        dispute-data (is-eq (get status dispute-data) "pending")
+        false
     )
 )
 

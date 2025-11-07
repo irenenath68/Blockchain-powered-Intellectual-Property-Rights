@@ -1,11 +1,10 @@
-;; Charity Donation Tracker (independent Clarity v3-style)
 (define-constant ERR-ALREADY-REGISTERED u100)
 (define-constant ERR-NOT-OWNER u101)
 (define-constant ERR-NOT-FOUND u102)
 
 (define-map donations
-  ((id uint))
-  ((donor principal) (amount uint) (memo (string-utf8 64)))
+  { id: uint }
+  { donor: principal, amount: uint, memo: (string-utf8 64) }
 )
 
 (define-public (donate (id uint) (amount uint) (memo (string-utf8 64)))
